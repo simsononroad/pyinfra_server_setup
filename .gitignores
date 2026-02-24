@@ -1,0 +1,7 @@
+/myenv
+pyinfra-debug.log
+/files
+templates/key.py.j2
+templates/wsgihandler.py.j2
+templates/ervinizmus_apache2.conf.j2
+inventory.py
