@@ -2,9 +2,17 @@ from pyinfra.operations import apt, server, files, git, pip, systemd, postgres, 
 from pyinfra import host
 from pyinfra.facts.postgres import PostgresDatabases
 from pyinfra.facts.files import Directory, FindDirectories
+from pyinfra import logger
+from pyinfra.operations import python
 
 ERVINIZMUS_HTML_DEST = "/var/www/ervinizmus"
 
+POSTGRES_DB_NAME = "ervinizmus"
+POSTGRES_NAME = "danidb"
+POSTGRES_PASSWORD = "EzEgyAdatbazis11"
+
+def log(string=None):
+    logger.error(string)
 
 # Define some state - this operation will do nothing on subsequent runs
 apt.packages(
@@ -52,6 +60,33 @@ files.template(
     src="templates/key.py.j2",
     dest=f"{ERVINIZMUS_HTML_DEST}/key.py",
 )
+
+
+
+
+files.template(
+    name="cert.pem betöltése",
+    src="templates/cert.pem.j2",
+    dest="/etc/letsencrypt/live/ervinizmus.eu/cert.pem"
+)
+
+files.template(
+    name="chain.pem betöltése",
+    src="templates/chain.pem.j2",
+    dest="/etc/letsencrypt/live/ervinizmus.eu/chain.pem"
+)
+files.template(
+    name="fullchain.pem betöltése",
+    src="templates/fullchain.pem.j2",
+    dest="/etc/letsencrypt/live/ervinizmus.eu/fullchain.pem"
+)
+files.template(
+    name="privkey.pem betöltése",
+    src="templates/privkey.pem.j2",
+    dest="/etc/letsencrypt/live/ervinizmus.eu/privkey.pem"
+)
+
+
 
 files.directory(
     name="Ervinizmus.eu létrehozása",
@@ -104,9 +139,9 @@ pip.packages(
 
 print(host.get_fact(FindDirectories, path="/etc/leletsencrypt"))
 
-files.directory(
+"""files.directory(
     name="live mappa létrehozása."
-)
+)"""
 
 
 server.shell(
@@ -122,27 +157,57 @@ systemd.service(
 
 postgresql.role(
     name="PostgreSQL fiók létrehozása",
-    role="danidb",
-    password="EzEgyAdatbázis11",
+    role=POSTGRES_NAME,
+    password=POSTGRES_PASSWORD,
     superuser=True,
     login=True,
     _sudo_user="postgres",
     
 )
 
-postgres.database(
-    name="Ervinizmus adatbázis létrehozása.",
-    database="ervinizmus",
-    owner="danidb",
-    encoding="UTF8",
-    _sudo_user="postgres"
+is_db_exist = postgres.sql(
+    name="Ervinizmus db létezik?",
+    sql="SELECT * FROM hivok",
+    psql_database=POSTGRES_DB_NAME,
+    psql_host="localhost",
+    psql_user=POSTGRES_NAME,
+    psql_password=POSTGRES_PASSWORD,
+    _ignore_errors=True
 )
 
-"""try:
-    host.get_fact(PostgresDatabases, psql_user="danidb", psql_password="EzEgyAdatbázis11", psql_host="localhost", psql_database="ervinizmuss")
-except:
-    files.put(
-        name="Ervinizmus dump másolása a távoli gépre.",
-        src="files/ervinizmus_db.dmp.gz",
-        dest="/tmp"
-    )"""
+python.call(
+    name="Result...",
+    function=log,
+    string=str(is_db_exist)
+)
+
+
+postgres.database(
+    name="Ervinizmus adatbázis létrehozása.",
+    database=POSTGRES_DB_NAME,
+    owner=POSTGRES_NAME,
+    encoding="UTF8",
+    _sudo_user="postgres",
+    _if=is_db_exist.did_error
+)
+
+files.put(
+    name="Ervinizmus dump másolása a távoli gépre.",
+    src="files/ervinizmus_db.dump",
+    dest="/tmp",
+    _if=is_db_exist.did_error
+)
+
+postgres.load(
+    name="Postgresql dump betöltése",
+    src="/tmp/ervinizmus_db.dump",
+    psql_database=POSTGRES_DB_NAME,
+    _sudo_user="postgres",
+    #psql_user = POSTGRES_NAME,
+    #psql_password = POSTGRES_PASSWORD,
+    #psql_host = "localhost"
+    _if=is_db_exist.did_error
+)
+
+
+
